@@ -2,6 +2,31 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ CRITICAL: Documentation-First Approach
+
+**BEFORE generating ANY code, you MUST:**
+
+1. **Check the `/docs` directory** for relevant documentation files
+2. **Read and understand** the applicable documentation thoroughly
+3. **Follow the patterns, conventions, and best practices** specified in those docs
+4. **Reference the documentation** when explaining your implementation decisions
+
+**This is non-negotiable.** All code generation must be guided by the project's documentation in `/docs`. If documentation exists for a feature or technology you're working with, it takes precedence over general knowledge or assumptions.
+
+When implementing features:
+- Search `/docs` for relevant files (e.g., API docs, component patterns, architecture decisions)
+- If you find relevant documentation, cite it in your responses
+- If documentation is missing or unclear, inform the user and ask for clarification
+
+**Example workflow:**
+```
+User: "Add a new workout feature"
+Claude:
+1. First, I'll check /docs for workout-related documentation
+2. [Reads relevant docs]
+3. Based on the patterns in /docs/workout-api.md, I'll implement...
+```
+
 ## Project Overview
 
 This is a Next.js 15.5.4 application using the App Router, built with TypeScript and styled with Tailwind CSS v4. The project was bootstrapped with `create-next-app` and is configured to use Turbopack for faster builds.
