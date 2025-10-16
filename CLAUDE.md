@@ -27,6 +27,32 @@ Claude:
 3. Based on the patterns in /docs/workout-api.md, I'll implement...
 ```
 
+## 🚨 CRITICAL: Data Fetching Standards
+
+**ALL data fetching in this application MUST follow the patterns defined in [`/docs/data-fetching.md`](./docs/data-fetching.md).**
+
+### Non-Negotiable Rules:
+
+1. **✅ Server Components ONLY** - All data fetching must be done in Server Components
+2. **❌ NO Route Handlers** - Do NOT create API routes (`app/api/*/route.ts`) for data fetching
+3. **❌ NO Client-Side Fetching** - Do NOT fetch data in Client Components
+4. **✅ Helper Functions** - All database queries must be in helper functions within `/src/data/` directory
+5. **✅ Drizzle ORM Only** - NO raw SQL queries allowed
+6. **✅ Security First** - Users can ONLY access their own data (always filter by authenticated user ID)
+
+### Before Writing ANY Data Fetching Code:
+
+- [ ] Read `/docs/data-fetching.md` thoroughly
+- [ ] Verify you're using a Server Component (not Client Component)
+- [ ] Confirm you're NOT creating a route handler
+- [ ] Create helper function in `/src/data/` directory
+- [ ] Use Drizzle ORM (not raw SQL)
+- [ ] Authenticate user with `auth()` from Clerk
+- [ ] Filter queries by authenticated user's ID
+- [ ] Verify ownership before returning data
+
+**See [`/docs/data-fetching.md`](./docs/data-fetching.md) for complete documentation, examples, and security patterns.**
+
 ## Project Overview
 
 This is a Next.js 15.5.4 application using the App Router, built with TypeScript and styled with Tailwind CSS v4. The project was bootstrapped with `create-next-app` and is configured to use Turbopack for faster builds.
@@ -71,10 +97,17 @@ npm run db:studio    # Open Drizzle Studio database browser
   - `layout.tsx`: Root layout with Geist font configuration
   - `page.tsx`: Home page component
   - `globals.css`: Global styles and Tailwind directives
+- **src/data/**: Data fetching helper functions (see `/docs/data-fetching.md`)
+  - `user.ts`: User-related data fetching functions
+  - `workout.ts`: Workout-related data fetching functions
+  - `exercise.ts`: Exercise-related data fetching functions
 - **src/db/**: Database configuration and schemas
   - `schema.ts`: Drizzle ORM table definitions
   - `index.ts`: Database client instance
 - **src/middleware.ts**: Clerk authentication middleware
+- **docs/**: Project documentation
+  - `data-fetching.md`: **MANDATORY** data fetching patterns and security rules
+  - `ui.md`: UI component guidelines
 - **drizzle/**: Generated migration files (auto-generated)
 - **drizzle.config.ts**: Drizzle Kit configuration
 - **tsconfig.json**: TypeScript configuration with path alias `@/*` pointing to `./src/*`
@@ -190,27 +223,39 @@ This project uses Drizzle ORM with Neon Postgres for type-safe database operatio
 2. Add `DATABASE_URL` to `.env.local`
 3. Run `npm run db:push` to sync schema to database
 
-### Database Client Usage
+### Database Query Patterns
+
+**⚠️ IMPORTANT: All database queries MUST be done via helper functions in `/src/data/` directory.**
+
+See [`/docs/data-fetching.md`](./docs/data-fetching.md) for complete patterns and examples.
+
+#### Quick Example
 
 ```typescript
+// ❌ DON'T: Query directly in components
+// app/workouts/page.tsx
 import { db } from "@/db";
-import { usersTable, workoutsTable, exercisesTable } from "@/db/schema";
+const workouts = await db.select().from(workoutsTable); // WRONG!
+
+// ✅ DO: Use helper functions from /src/data/
+// src/data/workout.ts
+import { db } from "@/db";
+import { workoutsTable } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
 
-// Query example
-const users = await db.select().from(usersTable);
+export async function getUserWorkouts() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
 
-// Insert example
-await db.insert(usersTable).values({
-  clerkId: "user_xxx",
-  name: "John Doe",
-  email: "john@example.com"
-});
+  return await db.query.workoutsTable.findMany({
+    where: eq(workoutsTable.userId, userId), // Always filter by user!
+  });
+}
 
-// Update example
-await db.update(usersTable)
-  .set({ name: "Jane Doe" })
-  .where(eq(usersTable.id, 1));
+// app/workouts/page.tsx
+import { getUserWorkouts } from "@/data/workout";
+const workouts = await getUserWorkouts(); // CORRECT!
 ```
 
 ### Database Schema
@@ -225,7 +270,9 @@ All tables include automatic timestamps (`createdAt`, `updatedAt`) and use casca
 
 ### Important Notes
 
-- Use `@/db` path alias to import database client
+- **Always use helper functions** from `/src/data/` - never query directly in components
+- **Always filter by authenticated user ID** - users can only access their own data
+- Use `@/db` path alias to import database client in helper functions
 - Database connection is optimized for serverless/Edge runtime via Neon HTTP
-- For server components and API routes, directly use the `db` instance
 - Type inference is automatic via Drizzle's `$inferSelect` and `$inferInsert`
+- **NO raw SQL** - use Drizzle ORM query builder only

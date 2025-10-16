@@ -1,4 +1,5 @@
 import { integer, pgTable, varchar, timestamp, text, numeric, boolean } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 
 /**
  * Users table - extends Clerk authentication with additional profile data
@@ -78,3 +79,31 @@ export type InsertExercise = typeof exercisesTable.$inferInsert;
 
 export type Set = typeof setsTable.$inferSelect;
 export type InsertSet = typeof setsTable.$inferInsert;
+
+// Define relations for Drizzle ORM relational queries
+export const usersRelations = relations(usersTable, ({ many }) => ({
+  workouts: many(workoutsTable),
+}));
+
+export const workoutsRelations = relations(workoutsTable, ({ one, many }) => ({
+  user: one(usersTable, {
+    fields: [workoutsTable.userId],
+    references: [usersTable.id],
+  }),
+  exercises: many(exercisesTable),
+}));
+
+export const exercisesRelations = relations(exercisesTable, ({ one, many }) => ({
+  workout: one(workoutsTable, {
+    fields: [exercisesTable.workoutId],
+    references: [workoutsTable.id],
+  }),
+  sets: many(setsTable),
+}));
+
+export const setsRelations = relations(setsTable, ({ one }) => ({
+  exercise: one(exercisesTable, {
+    fields: [setsTable.exerciseId],
+    references: [exercisesTable.id],
+  }),
+}));

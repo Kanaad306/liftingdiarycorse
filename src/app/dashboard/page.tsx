@@ -1,10 +1,6 @@
-"use client";
-
-import { useState } from "react";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Dumbbell } from "lucide-react";
+import { Dumbbell } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardContent,
@@ -12,41 +8,46 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { getWorkoutsByDate, getWorkoutStatsByDate } from "@/data/workout";
+import { DatePickerClient } from "./date-picker-client";
+import { parseDateFromYYYYMMDD, getTodayAtMidnight } from "@/lib/date-utils";
 
-// Mock workout data for UI display
-const mockWorkouts = [
-  {
-    id: 1,
-    name: "Morning Chest & Triceps",
-    exercises: [
-      { name: "Bench Press", sets: 4, reps: 10, weight: 185 },
-      { name: "Incline Dumbbell Press", sets: 3, reps: 12, weight: 70 },
-      { name: "Tricep Dips", sets: 3, reps: 15, weight: 0 },
-    ],
-    duration: 65,
-    createdAt: new Date(),
-  },
-  {
-    id: 2,
-    name: "Evening Back & Biceps",
-    exercises: [
-      { name: "Deadlifts", sets: 5, reps: 5, weight: 315 },
-      { name: "Pull-ups", sets: 4, reps: 8, weight: 0 },
-      { name: "Barbell Curls", sets: 3, reps: 12, weight: 75 },
-    ],
-    duration: 55,
-    createdAt: new Date(),
-  },
-];
+interface PageProps {
+  searchParams: Promise<{ date?: string }>;
+}
 
-export default function DashboardPage() {
-  const [date, setDate] = useState<Date>(new Date());
+export default async function DashboardPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+
+  // Parse date from search params (YYYY-MM-DD format) or use today
+  let selectedDate: Date;
+
+  if (params.date) {
+    const parsedDate = parseDateFromYYYYMMDD(params.date);
+
+    if (parsedDate) {
+      selectedDate = parsedDate;
+      console.log('[Dashboard] Date from params:', {
+        paramDate: params.date,
+        parsedDate: selectedDate.toISOString(),
+        localDate: selectedDate.toLocaleDateString(),
+      });
+    } else {
+      // Invalid date, fall back to today
+      console.warn('[Dashboard] Invalid date in params, using today:', params.date);
+      selectedDate = getTodayAtMidnight();
+    }
+  } else {
+    // Use today at midnight
+    selectedDate = getTodayAtMidnight();
+    console.log('[Dashboard] Using today:', selectedDate.toISOString());
+  }
+
+  // Fetch workouts and stats for the selected date
+  const [workouts, stats] = await Promise.all([
+    getWorkoutsByDate(selectedDate),
+    getWorkoutStatsByDate(selectedDate),
+  ]);
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
@@ -61,36 +62,15 @@ export default function DashboardPage() {
 
         {/* Date Picker Section */}
         <div className="mb-6 flex items-center gap-4">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-[280px] justify-start text-left font-normal",
-                  !date && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {date ? format(date, "do MMM yyyy") : <span>Pick a date</span>}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="single"
-                selected={date}
-                onSelect={(newDate) => newDate && setDate(newDate)}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
+          <DatePickerClient selectedDate={selectedDate} />
           <div className="text-sm text-muted-foreground">
-            Showing workouts for {format(date, "do MMM yyyy")}
+            Showing workouts for {format(selectedDate, "do MMM yyyy")}
           </div>
         </div>
 
         {/* Workouts List */}
         <div className="space-y-4">
-          {mockWorkouts.length === 0 ? (
+          {workouts.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <Dumbbell className="h-12 w-12 text-muted-foreground mb-4" />
@@ -101,44 +81,71 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           ) : (
-            mockWorkouts.map((workout) => (
-              <Card key={workout.id} className="hover:shadow-md transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        <Dumbbell className="h-5 w-5" />
-                        {workout.name}
-                      </CardTitle>
-                      <CardDescription>
-                        {workout.exercises.length} exercises • {workout.duration} minutes
-                      </CardDescription>
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {format(workout.createdAt, "do MMM yyyy")}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {workout.exercises.map((exercise, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between border-l-2 border-primary pl-4 py-2"
-                      >
-                        <div>
-                          <p className="font-medium">{exercise.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {exercise.sets} sets × {exercise.reps} reps
-                            {exercise.weight > 0 && ` @ ${exercise.weight} lbs`}
-                          </p>
-                        </div>
+            workouts.map((workout) => {
+              // Calculate total sets for display
+              const totalSets = workout.exercises?.reduce(
+                (sum, exercise) => sum + (exercise.sets?.length || 0),
+                0
+              ) || 0;
+
+              return (
+                <Card key={workout.id} className="hover:shadow-md transition-shadow">
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <Dumbbell className="h-5 w-5" />
+                          {workout.name}
+                        </CardTitle>
+                        <CardDescription>
+                          {workout.exercises?.length || 0} exercises • {totalSets} sets
+                          {workout.duration && ` • ${workout.duration} minutes`}
+                        </CardDescription>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+                      <div className="text-sm text-muted-foreground">
+                        {format(new Date(workout.startedAt), "h:mm a")}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {workout.exercises?.map((exercise) => {
+                        // Get non-warmup sets for display
+                        const workingSets = exercise.sets?.filter(s => !s.isWarmup) || [];
+
+                        return (
+                          <div
+                            key={exercise.id}
+                            className="flex items-center justify-between border-l-2 border-primary pl-4 py-2"
+                          >
+                            <div>
+                              <p className="font-medium">{exercise.exerciseName}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {workingSets.length} {workingSets.length === 1 ? 'set' : 'sets'}
+                                {workingSets.length > 0 && (
+                                  <>
+                                    {' × '}
+                                    {workingSets[0].reps} reps
+                                    {workingSets[0].weight && (
+                                      <> @ {workingSets[0].weight} {workingSets[0].weightUnit}</>
+                                    )}
+                                  </>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {workout.notes && (
+                      <div className="mt-4 pt-4 border-t">
+                        <p className="text-sm text-muted-foreground">{workout.notes}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })
           )}
         </div>
 
@@ -151,9 +158,9 @@ export default function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mockWorkouts.length}</div>
+              <div className="text-2xl font-bold">{stats.totalWorkouts}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                on {format(date, "do MMM yyyy")}
+                on {format(selectedDate, "do MMM yyyy")}
               </p>
             </CardContent>
           </Card>
@@ -164,9 +171,7 @@ export default function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {mockWorkouts.reduce((sum, w) => sum + w.exercises.length, 0)}
-              </div>
+              <div className="text-2xl font-bold">{stats.totalExercises}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 completed today
               </p>
@@ -180,7 +185,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {mockWorkouts.reduce((sum, w) => sum + w.duration, 0)} min
+                {stats.totalDuration} min
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 training time
